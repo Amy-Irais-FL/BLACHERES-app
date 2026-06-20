@@ -34,19 +34,6 @@ $fecha_manual = NULL;
 $hora_manual = NULL;
 $estado = "Sin empezar";
 
-$check = pg_query_params($conn,
-    "SELECT COUNT(*) as total 
-     FROM registros 
-     WHERE solicitante = $1
-     AND created_at >= NOW() - INTERVAL '1 minute'",
-    [$solicitante]
-);
-$row = pg_fetch_assoc($check);
-if($row["total"] > 0){
-    echo "DUPLICADO";
-    exit;
-}
-
 $result = pg_query_params($conn,
     "INSERT INTO registros 
     (solicitante, urgencia, origen, observaciones, observacion_general, fecha_manual, hora_manual, estado)
