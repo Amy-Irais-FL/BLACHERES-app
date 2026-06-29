@@ -10,8 +10,7 @@ session_start();
 header('Content-Type: application/json');
 
 if(
-    !isset($_SESSION["tipo"]) ||
-    $_SESSION["tipo"] !== "admin"
+    !isset($_SESSION["tipo"])
 ){
     echo json_encode([
         "error" => "SIN_PERMISOS"
