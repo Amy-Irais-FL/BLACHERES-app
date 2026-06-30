@@ -9,6 +9,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+require_once __DIR__ . '/PHPMailer/src/Exception.php';
+require_once __DIR__ . '/PHPMailer/src/PHPMailer.php';
+require_once __DIR__ . '/PHPMailer/src/SMTP.php';
 
 date_default_timezone_set('America/Mexico_City');
 include "conexion.php";
@@ -18,22 +24,41 @@ if(!$data){
     echo "No llegaron datos";
     exit;
 }
+
+// ===== DATOS =====
 $solicitante = $data['solicitante'] ?? "";
 $urgencia = $data['urgencia'] ?? "";
 $origen = $data['origen'] ?? "";
 $observaciones = $data['observaciones'] ?? "";
 
+// ===== CAPITALIZAR =====
 function capitalizar($texto){
     return ucfirst(mb_strtolower($texto, "UTF-8"));
 }
 $solicitante = capitalizar($solicitante);
 $observaciones = capitalizar($observaciones);
 
+// ===== VALORES DEFAULT =====
 $observacion_general = "";
 $fecha_manual = NULL;
 $hora_manual = NULL;
 $estado = "Sin empezar";
 
+// ===== VALIDAR DUPLICADO =====
+$check = pg_query_params($conn,
+    "SELECT COUNT(*) as total 
+     FROM registros 
+     WHERE solicitante = $1
+     AND created_at >= NOW() - INTERVAL '1 minute'",
+    [$solicitante]
+);
+$row = pg_fetch_assoc($check);
+if($row["total"] > 0){
+    echo "DUPLICADO";
+    exit;
+}
+
+// ===== INSERT =====
 $result = pg_query_params($conn,
     "INSERT INTO registros 
     (solicitante, urgencia, origen, observaciones, observacion_general, fecha_manual, hora_manual, estado)
@@ -49,39 +74,65 @@ $result = pg_query_params($conn,
         $estado
     ]
 );
-
+// ===== SI GUARDÓ =====
 if ($result) {
-        $url = "https://script.google.com/macros/s/AKfycbx3jLuiA8jX7oMVipXgKgs5VhgKi7M_RnYm7edOYbJmUxN9mNKbtmQH7FJSqPYAx6NL/exec";
 
-    $datosCorreo = [
-        "token" => "BLACHERE_2026",
-        "solicitante" => $solicitante,
-        "urgencia" => $urgencia,
-        "origen" => $origen,
-        "observaciones" => $observaciones
-    ];
 
-    $options = [
-        'http' => [
-            'header'  => "Content-Type: application/json\r\n",
-            'method'  => 'POST',
-            'content' => json_encode($datosCorreo)
-        ]
-    ];
+    try {
 
-    $context = stream_context_create($options);
-    $respuesta = @file_get_contents(
-        $url,
-        false,
-        $context
-    );
-    if(trim($respuesta) === "OK"){
+        $mail->SMTPDebug = 4;
+        $mail->Timeout = 30;
+        $mail->SMTPKeepAlive = true;
+
+        $mail->isSMTP();
+        $mail->Host = 'smtp.gmail.com';
+        $mail->SMTPAuth = true;
+        $mail->Username = getenv('MAIL_USER');
+        $mail->Password = getenv('MAIL_PASS');
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+        $mail->Port = 465;
+        $mail->CharSet = 'UTF-8';
+
+        $mail->SMTPOptions = [
+            'ssl' => [
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            ]
+        ];
+
+        $mail->setFrom(
+            'amy644224@gmail.com',
+            'Sistema Solicitudes'
+        );
+
+        $mail->addAddress('amy644224@gmail.com');
+
+        $mail->isHTML(true);
+        $mail->Subject = 'Nueva solicitud';
+
+        $mail->Body = "
+            <h3>📢 Nueva solicitud</h3>
+            <b>Solicitante:</b> $solicitante <br>
+            <b>Urgencia:</b> $urgencia <br>
+            <b>Tema:</b> $origen <br>
+            <b>Observaciones:</b> $observaciones <br>
+            <b>Fecha:</b> ".date("d/m/Y H:i")."
+        ";
+
+        $mail->send();
+
         echo "OK";
-    }else{
-        echo "ERROR_CORREO";
-        
+
+    } catch (Exception $e) {
+
+    error_log("ERROR_MAIL: " . $mail->ErrorInfo);
+
+    echo "ERROR_CORREO: " . $mail->ErrorInfo;
     }
+
 } else {
+
     echo "Error BD";
 }
 
